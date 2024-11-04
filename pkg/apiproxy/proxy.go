@@ -2,8 +2,11 @@ package apiproxy
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
+	"github.com/go-logr/logr"
+	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -25,6 +28,7 @@ type APIProxy interface {
 	DeleteObject(ctx context.Context, obj client.Object, opts ...client.DeleteOption) error
 
 	UpdateStatus(ctx context.Context) error
+	DiffStatus(ctx context.Context, logger logr.Logger) error
 }
 
 type ConditionManager interface {
@@ -177,4 +181,58 @@ func (c *apiProxy) createAndReferenceObject(ctx context.Context, obj client.Obje
 
 func (c *apiProxy) UpdateStatus(ctx context.Context) error {
 	return c.client.Status().Update(ctx, c.object)
+}
+
+func (c *apiProxy) DiffStatus(ctx context.Context, logger logr.Logger) error {
+	// Step 1: Fetch the current object from the cluster
+	currentObject := c.object.DeepCopyObject().(client.Object) // Deep copy and ensure it implements client.Object
+	if err := c.client.Get(ctx, client.ObjectKeyFromObject(c.object), currentObject); err != nil {
+		logger.Error(err, "Failed to fetch current object")
+		return err
+	}
+
+	// Step 2: Compare the current status with the desired status
+	currentStatus, err := extractStatus(currentObject)
+	if err != nil {
+		logger.Error(err, "Failed to extract current status")
+		return err
+	}
+
+	desiredStatus, err := extractStatus(c.object)
+	if err != nil {
+		logger.Error(err, "Failed to extract desired status")
+		return err
+	}
+
+	// Use a diffing library to compute and log the diff
+	diff := cmp.Diff(currentStatus, desiredStatus)
+	if diff == "" {
+		logger.Info("No differences found between statuses")
+	} else {
+		logger.Info("Differences found in status", "diff", diff)
+	}
+
+	return nil
+}
+
+// Helper function to extract status from a client.Object
+func extractStatus(obj client.Object) (map[string]interface{}, error) {
+	// Marshal the object into JSON to extract the `status` field
+	objBytes, err := json.Marshal(obj)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse the JSON and extract the `status` field
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(objBytes, &parsed); err != nil {
+		return nil, err
+	}
+
+	status, ok := parsed["status"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("status field not found or invalid")
+	}
+
+	return status, nil
 }

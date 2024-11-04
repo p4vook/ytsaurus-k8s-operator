@@ -96,6 +96,7 @@ func (c *Ytsaurus) SaveUpdatingClusterState(ctx context.Context, flow ytv1.Updat
 	c.ytsaurus.Status.UpdateStatus.Flow = flow
 	c.ytsaurus.Status.UpdateStatus.Components = components
 
+	c.apiProxy.DiffStatus(ctx, logger)
 	if err := c.apiProxy.UpdateStatus(ctx); err != nil {
 		logger.Error(err, "unable to update Ytsaurus cluster status")
 		return err
