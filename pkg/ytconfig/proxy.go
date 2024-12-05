@@ -96,6 +96,13 @@ type TCPProxyServer struct {
 	Role string `yson:"role"`
 }
 
+type KafkaProxyServer struct {
+	CommonServer
+	Role string `yson:"role"`
+	Port int    `yson:"port"`
+	Auth Auth   `yson:"auth"`
+}
+
 func getHTTPProxyLogging(spec *ytv1.HTTPProxiesSpec) Logging {
 	return createLogging(
 		&spec.InstanceSpec,
@@ -169,6 +176,13 @@ func getTCPProxyLogging(spec *ytv1.TCPProxiesSpec) Logging {
 		[]ytv1.TextLoggerSpec{defaultInfoLoggerSpec(), defaultStderrLoggerSpec()})
 }
 
+func getKafkaProxyLogging(spec *ytv1.KafkaProxiesSpec) Logging {
+	return createLogging(
+		&spec.InstanceSpec,
+		"kafka-proxy",
+		[]ytv1.TextLoggerSpec{defaultInfoLoggerSpec(), defaultStderrLoggerSpec(), defaultDebugLoggerSpec()})
+}
+
 func getTCPProxyServerCarcass(spec *ytv1.TCPProxiesSpec) (TCPProxyServer, error) {
 	var c TCPProxyServer
 
@@ -176,6 +190,20 @@ func getTCPProxyServerCarcass(spec *ytv1.TCPProxiesSpec) (TCPProxyServer, error)
 
 	c.Role = spec.Role
 	c.Logging = getTCPProxyLogging(spec)
+
+	return c, nil
+}
+
+func getKafkaProxyServerCarcass(spec *ytv1.KafkaProxiesSpec) (KafkaProxyServer, error) {
+	var c KafkaProxyServer
+
+	c.MonitoringPort = *spec.InstanceSpec.MonitoringPort
+
+	c.Role = spec.Role
+	c.Auth.RequireAuthentication = true
+	c.Auth.CypressTokenAuthenticator.Secure = true
+	c.Port = consts.KafkaProxyKafkaPort
+	c.Logging = getKafkaProxyLogging(spec)
 
 	return c, nil
 }
